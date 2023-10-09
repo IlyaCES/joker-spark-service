@@ -26,13 +26,9 @@ case class SparkRunnerConfig(queryName: String,
 
 class SparkRunner(config: SparkRunnerConfig) {
 
-  private val failsCounter = Counter.builder(s"SparkRunner.sparkFails").tag("pipelineName", config.queryName).register(Metrics.globalRegistry)
-
   private val logger = LoggerFactory.getLogger(this.getClass.getName + s".${config.queryName}")
 
   private implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newSingleThreadExecutor())
-
-  private val parallelism = config.parallelism.map(_.toString).getOrElse("*")
 
   private lazy val spark = {
     logger.info(s"Spark runner config $config")
@@ -40,6 +36,7 @@ class SparkRunner(config: SparkRunnerConfig) {
 
     logger.info(s"Initialize spark session with config ${sparkConfig.getAll.mkString("(", ", ", ")")}")
 
+    val parallelism = config.parallelism.map(_.toString).getOrElse("*")
     val session = SparkSession.builder
       .master(s"local[$parallelism]")
       .appName(config.queryName)
@@ -50,21 +47,7 @@ class SparkRunner(config: SparkRunnerConfig) {
     session
   }
 
-  Gauge.builder(
-    "SparkRunner.activeStreams",
-    spark,
-    (spark: SparkSession) => spark.streams.active.length.toDouble
-  ).register(Metrics.globalRegistry)
-
-  def start(): Unit = {
-    startQuery().recoverWith {
-      case exception: Exception =>
-        logFailure(exception)
-        startQuery()
-    }
-  }
-
-  private def startQuery(): Future[Unit] = Future {
+  def start(): Unit = Future {
     logger.info(s"Starting spark query ${config.queryName}")
     val stream = spark.readStream
       .format(classOf[ServiceSourceProvider].getName)
@@ -77,10 +60,5 @@ class SparkRunner(config: SparkRunnerConfig) {
       .trigger(Trigger.Continuous(config.sparkTriggerInterval))
       .start()
       .awaitTermination()
-  }
-
-  private def logFailure(exception: Throwable): Unit = {
-    failsCounter.increment()
-    logger.error("Spark query failed, try to restart", exception)
   }
 }
