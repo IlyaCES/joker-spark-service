@@ -1,6 +1,5 @@
 package spark
 
-import io.micrometer.core.instrument.{Counter, Gauge, Metrics}
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.{col, length}
